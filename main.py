@@ -50,6 +50,32 @@ def envia_teste():
     try:
       byte_com_conversao = int(valor_digitado, 16) if '0x' in valor_digitado else int(valor_digitado)
       arduino.write(bytes([byte_com_conversao]))
+    
+      texto_resultado.config(text="Aguardando resposta...")
+      raiz.update_idletasks() # Força a interface a atualizar o texto antes de travar na leitura
+
+      # Aguarda e lê 1 byte de resposta enviado pelo Arduino
+      resposta_bruta = arduino.read(1)
+      if resposta_bruta:
+        # Transforma o byte recebido em um número inteiro para exibição
+        valor_retornado = resposta_bruta[0]
+        status_msg = f"Resposta: 0x{valor_retornado:02X} - "
+                
+        # Validação do Handshake
+        if valor_retornado in [0x00, 0xFF]:
+          status_msg += "Erro físico RC522."
+        elif valor_retornado in [0x91, 0x92]:
+          status_msg += "Sucesso! RC522 OK."
+        else:
+          status_msg += "Resposta desconhecida."
+             
+        # Atualiza a label de status na interface gráfica
+        texto_status.config(text=status_msg)
+                
+      else:
+        texto_resultado.config(text="Erro: Sem resposta (Timeout).")
+        messagebox.showerror("Timeout", "O Arduino não respondeu dentro do tempo limite.")
+    
     except ValueError:
       messagebox.showerror("Erro", "Digite um valor hexadecimal ou inteiro válido!")
     
@@ -107,6 +133,14 @@ botao_acao = ttk.Button(frame_acao, text="Enviar", command=envia_teste, state="d
 botao_acao.pack()
 
 frame_acao.pack()
+
+# Mostra o resultado
+frame_resultado = ttk.Labelframe(mainframe, text="Ação")
+
+texto_resultado = ttk.Label(frame_resultado, text="Aguardando teste...")
+texto_resultado.pack()
+
+frame_resultado.pack()
 
 # Executa a busca de portas logo ao iniciar o programa
 atualizar_portas()
