@@ -169,7 +169,7 @@ def ao_fechar():
 # --- INTERFACE GRÁFICA ---
 raiz = Tk()
 raiz.title("Gerenciador de Componentes & Arduino")
-raiz.geometry("850x600")
+raiz.geometry("800x500")
 
 # Inicializa o mainframe com Grid para separar em colunas
 mainframe = ttk.Frame(raiz, padding="20")
@@ -178,10 +178,6 @@ mainframe.pack(fill=BOTH, expand=True)
 # Configuração de pesos de colunas para dar espaço proporcional
 mainframe.columnconfigure(0, weight=1) # Lado Esquerdo/Meio (Operação)
 mainframe.columnconfigure(1, weight=1) # Lado Direito (Cadastro)
-
-# ==========================================
-# COLUNA 0: OPERAÇÃO (CONEXÃO, SELEÇÃO, AÇÃO)
-# ==========================================
 
 frame_esquerda = ttk.Frame(mainframe)
 frame_esquerda.grid(row=0, column=0, sticky="nsew", padx=10)
@@ -196,11 +192,14 @@ texto_conexao.pack(anchor="w")
 combo_portas = ttk.Combobox(frame_conexao, state="readonly")
 combo_portas.pack(fill="x", pady=5)
 
-botao_atualizar = ttk.Button(frame_conexao, text="Atualizar Portas", command=atualizar_portas)
-botao_atualizar.pack(fill="x", pady=2)
+frame_botoes_conexao = ttk.Frame(frame_conexao)
+frame_botoes_conexao.pack(fill="x", pady=2)
 
-botao_conectar = ttk.Button(frame_conexao, text="Conectar", command=conectar_arduino)
-botao_conectar.pack(fill="x", pady=2)
+botao_atualizar = ttk.Button(frame_botoes_conexao, text="Atualizar Portas", command=atualizar_portas)
+botao_atualizar.pack(side=LEFT, expand=True, fill="x", padx=(0, 2))
+
+botao_conectar = ttk.Button(frame_botoes_conexao, text="Conectar", command=conectar_arduino)
+botao_conectar.pack(side=LEFT, expand=True, fill="x", padx=(2, 0))
 
 texto_status = ttk.Label(frame_conexao, text="Não conectado", foreground="gray")
 texto_status.pack(pady=5)
@@ -235,11 +234,6 @@ frame_resultado.pack(fill="x", pady=5)
 texto_resultado = ttk.Label(frame_resultado, text="Aguardando teste...", font=("Helvetica", 10, "italic"))
 texto_resultado.pack(pady=5)
 
-
-# ==========================================
-# COLUNA 1: CADASTRO DE NOVOS COMPONENTES (DIREITA)
-# ==========================================
-
 frame_direita = ttk.Frame(mainframe)
 frame_direita.grid(row=0, column=1, sticky="nsew", padx=10)
 
@@ -267,7 +261,7 @@ botao_cadastrar = ttk.Button(frame_cadastro, text="Salvar no Banco (CSV)", comma
 botao_cadastrar.pack(fill="x", ipady=5)
 
 
-# --- ROTINAS DE INICIALIZAÇÃO ---
+# Inicialização
 inicializar_csv()
 carregar_componentes()
 atualizar_portas()
