@@ -151,9 +151,7 @@ def envia_teste():
             else:
                 status_msg += "Resposta desconhecida."
              
-            texto_status.config(text=status_msg)
-            texto_resultado.config(text="Teste finalizado.")
-                
+            texto_resultado.config(text=status_msg)
         else:
             texto_resultado.config(text="Erro: Sem resposta (Timeout).")
             messagebox.showerror("Timeout", "O Arduino não respondeu dentro do tempo limite.")
