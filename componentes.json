@@ -1,0 +1,14 @@
+{
+    "RC522": {
+        "Comandos": [
+            {
+                "envio": "0x37",
+                "sucessos": "0x91,0x92"
+            },
+            {
+                "envio": "0x36",
+                "sucessos": "0x40"
+            }
+        ]
+    }
+}

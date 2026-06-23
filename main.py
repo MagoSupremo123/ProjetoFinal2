@@ -18,10 +18,10 @@ def inicializar_json():
             json.dump({}, f, indent=4)
         # Inserir o RC522 como padrão inicial para facilitar (com 2 comandos de exemplo)
         dados_iniciais = [
-            {"envio": "0x10", "sucessos": "0x91,0x92"},
-            {"envio": "0x11", "sucessos": "0x95"}
+            {"envio": "0x37", "sucessos": "0x91,0x92"},
+            {"envio": "0x36", "sucessos": "0x40"}
         ]
-        salvar_componente_json("Dummy", dados_iniciais)
+        salvar_componente_json("RC522", dados_iniciais)
 
 def salvar_componente_json(nome, lista_comandos):
     """Carrega o JSON atual, adiciona/atualiza o componente com seus múltiplos pares e salva."""
@@ -151,10 +151,12 @@ def conectar_arduino():
         texto_status.config(text=f"Conectado em {porta_selecionada}")
         time.sleep(2)
         botao_acao.config(state="normal")
+        botao_manual.config(state="normal")
     except Exception as e:
         texto_status.config(text="Erro ao conectar!")
         messagebox.showerror("Erro", f"Não foi possível conectar à porta {porta_selecionada}.\n{e}")
         botao_acao.config(state="disabled")
+        botao_manual.config(state="disabled")
 
 def envia_teste():
     if not arduino or not arduino.is_open:
@@ -185,7 +187,7 @@ def envia_teste():
             arduino.reset_input_buffer()
             arduino.write(bytes([byte_com_conversao]))
             
-            time.sleep(0.1) # Pequena pausa para o Arduino processar e responder
+            time.sleep(0.1) # Pequena pausa para o Arduino responder
             
             resposta_bruta = arduino.read(1)
             if resposta_bruta:
@@ -213,14 +215,56 @@ def envia_teste():
             status_final_msg += f"Par #{idx}: Erro ao processar dados hexadecimais.\n"
             sucesso_geral = False
 
-    # Exibe o relatório consolidado na interface
     texto_resultado.config(text=status_final_msg.strip())
     
     if sucesso_geral:
         messagebox.showinfo("Resultado", f"Todos os testes do componente '{comp_selecionado}' passaram!")
     else:
         messagebox.showwarning("Resultado", f"Houve falhas nos testes do componente '{comp_selecionado}'.")
-    
+
+def envia_teste_manual():
+    """Envia um byte arbitrário digitado na hora, sem validação pelo JSON."""
+    if not arduino or not arduino.is_open:
+        messagebox.showerror("Erro", "O arduino não está conectado")
+        return
+
+    byte_texto = entry_manual.get().strip()
+    if not byte_texto:
+        messagebox.showwarning("Aviso", "Digite um byte para enviar!")
+        return
+
+    try:
+        # Tenta converter para inteiro (aceita decimal ou 0xHex)
+        byte_a_enviar = int(byte_texto, 16) if '0x' in byte_texto.lower() else int(byte_texto)
+        
+        if byte_a_enviar < 0 or byte_a_enviar > 255:
+            raise ValueError("Fora do limite")
+            
+    except ValueError:
+        messagebox.showerror("Erro", "Digite um valor de byte válido entre 0 e 255 (ou em Hex: 0x00 a 0xFF)!")
+        return
+
+    try:
+        texto_resultado.config(text=f"[Manual] Enviando {byte_texto}...")
+        raiz.update_idletasks()
+
+        arduino.reset_input_buffer()
+        arduino.write(bytes([byte_a_enviar]))
+        
+        time.sleep(0.1) # Aguarda resposta
+
+        resposta_bruta = arduino.read(1)
+        if resposta_bruta:
+            valor_retornado = resposta_bruta[0]
+            msg = f"[Manual] Enviado: {byte_texto}\n[Manual] Resposta do Arduino: {valor_retornado} (0x{valor_retornado:02X})"
+            texto_resultado.config(text=msg)
+        else:
+            texto_resultado.config(text=f"[Manual] Enviado: {byte_texto}\n[Manual] Erro: Sem resposta (Timeout).")
+            messagebox.showerror("Timeout", "O Arduino não respondeu ao comando manual.")
+            
+    except Exception as e:
+        messagebox.showerror("Erro", f"Falha na comunicação serial: {e}")
+
 def ao_fechar():
     if arduino and arduino.is_open:
         arduino.close()
@@ -229,7 +273,7 @@ def ao_fechar():
 # --- INTERFACE GRÁFICA ---
 raiz = Tk()
 raiz.title("Gerenciador de Componentes & Arduino")
-raiz.geometry("1200x600")
+raiz.geometry("900x600")
 
 mainframe = ttk.Frame(raiz, padding="20")
 mainframe.pack(fill=BOTH, expand=True)
@@ -263,35 +307,41 @@ texto_status = ttk.Label(frame_conexao, text="Não conectado", foreground="gray"
 texto_status.pack(pady=5)
 
 
-# 2. Seleção de Componente
-frame_config = ttk.Labelframe(frame_esquerda, text="Componente Alvo", padding="10")
+# 2. Seleção de Componente (Banco de Dados)
+frame_config = ttk.Labelframe(frame_esquerda, text="Modo Automático - Componente Alvo", padding="10")
 frame_config.pack(fill="x", pady=5)
-
-texto_config = ttk.Label(frame_config, text="Selecione o componente cadastrado:")
-texto_config.pack(anchor="w")
 
 combo_componentes = ttk.Combobox(frame_config, state="readonly")
 combo_componentes.pack(fill="x", pady=5)
 
-
-# 3. Execução da Ação
-frame_acao = ttk.Labelframe(frame_esquerda, text="Ação", padding="10")
-frame_acao.pack(fill="x", pady=5)
-
-texto_acao = ttk.Label(frame_acao, text="Testar todos os pares associados ao componente:")
-texto_acao.pack(anchor="w")
-
-botao_acao = ttk.Button(frame_acao, text="Enviar Teste Completo", command=envia_teste, state="disabled")
+botao_acao = ttk.Button(frame_config, text="Enviar Teste Completo (JSON)", command=envia_teste, state="disabled")
 botao_acao.pack(fill="x", pady=5)
 
 
-# 4. Resultados (Aumentado para acomodar várias linhas de resposta)
+# 3. NOVO: Teste de Bytes Manual (Direto)
+frame_manual = ttk.Labelframe(frame_esquerda, text="Modo Manual - Teste Direto de Byte", padding="10")
+frame_manual.pack(fill="x", pady=5)
+
+ttk.Label(frame_manual, text="Digite o byte de envio (Ex: 145 ou 0x37):").pack(anchor="w")
+
+frame_sub_manual = ttk.Frame(frame_manual)
+frame_sub_manual.pack(fill="x", pady=5)
+
+entry_manual = ttk.Entry(frame_sub_manual)
+entry_manual.pack(side=LEFT, expand=True, fill="x", padx=(0, 5))
+
+botao_manual = ttk.Button(frame_sub_manual, text="Enviar Direto", command=envia_teste_manual, state="disabled")
+botao_manual.pack(side=RIGHT)
+
+
+# 4. Resultados
 frame_resultado = ttk.Labelframe(frame_esquerda, text="Status do Teste", padding="10")
 frame_resultado.pack(fill="both", expand=True, pady=5)
 
-texto_resultado = ttk.Label(frame_resultado, text="Aguardando teste...", font=("Helvetica", 10, "italic"), justify=LEFT)
+texto_resultado = ttk.Label(frame_resultado, text="Aguardando ação...", font=("Helvetica", 10, "italic"), justify=LEFT)
 texto_resultado.pack(anchor="w", pady=5)
 
+# --- LADO DIREITO ---
 frame_direita = ttk.Frame(mainframe)
 frame_direita.grid(row=0, column=1, sticky="nsew", padx=10)
 
@@ -308,13 +358,12 @@ ttk.Label(frame_cadastro, text="Pares Envio = Sucessos (um por linha):").pack(an
 text_comandos = Text(frame_cadastro, height=8, font=("Helvetica", 10))
 text_comandos.pack(fill="x", pady=(0,2))
 
-# Exemplo explicativo no cadastro
 exemplo_txt = (
     "Exemplo:\n"
-    "0x37 = 0x91,0x92\n"
-    "0x38 = 0x95"
+    "0x10 = 0x91,0x92\n"
+    "0x12 = 0x67"
 )
-ttk.Label(frame_cadastro, text=exemplo_txt,justify=LEFT).pack(anchor="w", pady=(0,15))
+ttk.Label(frame_cadastro, text=exemplo_txt, font=("Helvetica", 8, "italic"), foreground="gray", justify=LEFT).pack(anchor="w", pady=(0,15))
 
 # Botão Salvar
 botao_cadastrar = ttk.Button(frame_cadastro, text="Salvar no Banco (JSON)", command=cadastrar_novo_componente)
