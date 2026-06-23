@@ -16,11 +16,15 @@ def inicializar_json():
     if not os.path.exists(JSON_FILE):
         with open(JSON_FILE, mode='w', encoding='utf-8') as f:
             json.dump({}, f, indent=4)
-        # Inserir o RC522 como padrão inicial para facilitar
-        salvar_componente_json("RC522", "0x37", "0x91,0x92")
+        # Inserir o RC522 como padrão inicial para facilitar (com 2 comandos de exemplo)
+        dados_iniciais = [
+            {"envio": "0x10", "sucessos": "0x91,0x92"},
+            {"envio": "0x11", "sucessos": "0x95"}
+        ]
+        salvar_componente_json("Dummy", dados_iniciais)
 
-def salvar_componente_json(nome, handshake, sucessos):
-    """Carrega o JSON atual, adiciona o novo componente e salva de volta."""
+def salvar_componente_json(nome, lista_comandos):
+    """Carrega o JSON atual, adiciona/atualiza o componente com seus múltiplos pares e salva."""
     dados = {}
     if os.path.exists(JSON_FILE):
         try:
@@ -29,10 +33,9 @@ def salvar_componente_json(nome, handshake, sucessos):
         except json.JSONDecodeError:
             dados = {}
             
-    # Adiciona ou atualiza o componente no dicionário
+    # Guarda os comandos estruturados para o componente
     dados[nome] = {
-        "Handshake": handshake,
-        "Sucessos": sucessos
+        "Comandos": lista_comandos
     }
     
     with open(JSON_FILE, mode='w', encoding='utf-8') as f:
@@ -50,10 +53,12 @@ def carregar_componentes():
         with open(JSON_FILE, mode='r', encoding='utf-8') as f:
             dados = json.load(f)
             for nome, info in dados.items():
-                componentes_carregados[nome] = {
-                    "handshake": info["Handshake"],
-                    "sucessos": [s.strip() for s in info["Sucessos"].split(",")]
-                }
+                componentes_carregados[nome] = []
+                for cmd in info.get("Comandos", []):
+                    componentes_carregados[nome].append({
+                        "handshake": cmd["envio"],
+                        "sucessos": [s.strip() for s in cmd["sucessos"].split(",")]
+                    })
     except Exception as e:
         messagebox.showerror("Erro", f"Erro ao ler o arquivo JSON: {e}")
             
@@ -65,33 +70,57 @@ def carregar_componentes():
 
 def cadastrar_novo_componente():
     nome = entry_nome.get().strip()
-    handshake = entry_handshake.get().strip()
-    sucessos = entry_sucessos.get().strip()
+    linhas_texto = text_comandos.get("1.0", END).strip()
     
-    if not nome or not handshake or not sucessos:
-        messagebox.showwarning("Aviso", "Todos os campos de cadastro são obrigatórios!")
+    if not nome or not linhas_texto:
+        messagebox.showwarning("Aviso", "O nome e as configurações dos pares são obrigatórios!")
         return
         
     if nome in componentes_carregados:
         messagebox.showwarning("Aviso", "Já existe um componente com este nome!")
         return
 
-    try:
-        # Validação simples de formato (garantir que são inteiros ou hexadecimais válidos)
-        int(handshake, 16) if '0x' in handshake else int(handshake)
-        for s in sucessos.split(','):
-            int(s.strip(), 16) if '0x' in s.strip() else int(s.strip())
-    except ValueError:
-        messagebox.showerror("Erro", "Os endereços de Handshake e Sucesso devem ser inteiros ou hexadecimais (ex: 0x37)!")
+    lista_comandos_validados = []
+    
+    # Processa cada linha digitada no Text box
+    for linha in linhas_texto.split('\n'):
+        linha = linha.strip()
+        if not linha:
+            continue
+            
+        if '=' not in linha:
+            messagebox.showerror("Erro", f"Linha inválida: '{linha}'\nUse o formato: byte_envio = byte_sucesso1,byte_sucesso2")
+            return
+            
+        handshake, sucessos = linha.split('=', 1)
+        handshake = handshake.strip()
+        sucessos = sucessos.strip()
+        
+        try:
+            # Validação do formato do byte de envio
+            int(handshake, 16) if '0x' in handshake else int(handshake)
+            # Validação dos bytes de sucesso
+            for s in sucessos.split(','):
+                int(s.strip(), 16) if '0x' in s.strip() else int(s.strip())
+        except ValueError:
+            messagebox.showerror("Erro", f"Os endereços em '{linha}' devem ser inteiros ou hexadecimais (ex: 0x37)!")
+            return
+            
+        lista_comandos_validados.append({
+            "envio": handshake,
+            "sucessos": sucessos
+        })
+
+    if not lista_comandos_validados:
+        messagebox.showwarning("Aviso", "Insira pelo menos um par de envio/resposta!")
         return
 
-    salvar_componente_json(nome, handshake, sucessos)
+    salvar_componente_json(nome, lista_comandos_validados)
     carregar_componentes() # Recarrega a lista
     
     # Limpa os campos de texto
     entry_nome.delete(0, END)
-    entry_handshake.delete(0, END)
-    entry_sucessos.delete(0, END)
+    text_comandos.delete("1.0", END)
     messagebox.showinfo("Sucesso", f"Componente '{nome}' cadastrado com sucesso!")
 
 def atualizar_portas():
@@ -137,43 +166,60 @@ def envia_teste():
         messagebox.showerror("Erro", "Nenhum componente selecionado!")
         return
         
-    # Obtém as especificações do componente vindas do JSON
-    dados_comp = componentes_carregados[comp_selecionado]
-    valor_digitado = dados_comp["handshake"]
+    lista_pares = componentes_carregados[comp_selecionado]
     
-    try:
-        byte_com_conversao = int(valor_digitado, 16) if '0x' in valor_digitado else int(valor_digitado)
-        arduino.write(bytes([byte_com_conversao]))
+    texto_resultado.config(text="Executando testes em sequência...")
+    raiz.update_idletasks()
     
-        texto_resultado.config(text="Aguardando resposta...")
-        raiz.update_idletasks()
+    status_final_msg = ""
+    sucesso_geral = True
 
-        resposta_bruta = arduino.read(1)
-        if resposta_bruta:
-            valor_retornado = resposta_bruta[0]
-            status_msg = f"Resposta: 0x{valor_retornado:02X} - "
+    # Executa o teste sequencial para CADA par cadastrado no componente
+    for idx, par in enumerate(lista_pares, start=1):
+        valor_digitado = par["handshake"]
+        
+        try:
+            byte_com_conversao = int(valor_digitado, 16) if '0x' in valor_digitado else int(valor_digitado)
             
-            # Converte a lista de sucessos salvas em inteiros para comparação direta
-            lista_sucessos_int = []
-            for s in dados_comp["sucessos"]:
-                num = int(s, 16) if '0x' in s else int(s)
-                lista_sucessos_int.append(num)
+            # Limpa o buffer antes de enviar
+            arduino.reset_input_buffer()
+            arduino.write(bytes([byte_com_conversao]))
+            
+            time.sleep(0.1) # Pequena pausa para o Arduino processar e responder
+            
+            resposta_bruta = arduino.read(1)
+            if resposta_bruta:
+                valor_retornado = resposta_bruta[0]
                 
-            # Validação dinâmica baseada no componente
-            if valor_retornado in [0x00, 0xFF]:
-                status_msg += f"Erro físico no dispositivo."
-            elif valor_retornado in lista_sucessos_int:
-                status_msg += f"Sucesso! {comp_selecionado} OK."
+                # Converte a lista de sucessos salvas em inteiros
+                lista_sucessos_int = []
+                for s in par["sucessos"]:
+                    num = int(s, 16) if '0x' in s else int(s)
+                    lista_sucessos_int.append(num)
+                    
+                if valor_retornado in [0x00, 0xFF]:
+                    status_final_msg += f"Par #{idx} (Enviado {valor_digitado}): Erro físico (0x{valor_retornado:02X})\n"
+                    sucesso_geral = False
+                elif valor_retornado in lista_sucessos_int:
+                    status_final_msg += f"Par #{idx} (Enviado {valor_digitado}): OK (0x{valor_retornado:02X})\n"
+                else:
+                    status_final_msg += f"Par #{idx} (Enviado {valor_digitado}): Inesperado (0x{valor_retornado:02X})\n"
+                    sucesso_geral = False
             else:
-                status_msg += "Resposta desconhecida."
-             
-            texto_resultado.config(text=status_msg)
-        else:
-            texto_resultado.config(text="Erro: Sem resposta (Timeout).")
-            messagebox.showerror("Timeout", "O Arduino não respondeu dentro do tempo limite.")
+                status_final_msg += f"Par #{idx} (Enviado {valor_digitado}): Timeout sem resposta\n"
+                sucesso_geral = False
+                
+        except ValueError:
+            status_final_msg += f"Par #{idx}: Erro ao processar dados hexadecimais.\n"
+            sucesso_geral = False
+
+    # Exibe o relatório consolidado na interface
+    texto_resultado.config(text=status_final_msg.strip())
     
-    except ValueError:
-        messagebox.showerror("Erro", "Erro ao processar os dados hexadecimais do componente.")
+    if sucesso_geral:
+        messagebox.showinfo("Resultado", f"Todos os testes do componente '{comp_selecionado}' passaram!")
+    else:
+        messagebox.showwarning("Resultado", f"Houve falhas nos testes do componente '{comp_selecionado}'.")
     
 def ao_fechar():
     if arduino and arduino.is_open:
@@ -183,15 +229,13 @@ def ao_fechar():
 # --- INTERFACE GRÁFICA ---
 raiz = Tk()
 raiz.title("Gerenciador de Componentes & Arduino")
-raiz.geometry("800x500")
+raiz.geometry("1200x600")
 
-# Inicializa o mainframe com Grid para separar em colunas
 mainframe = ttk.Frame(raiz, padding="20")
 mainframe.pack(fill=BOTH, expand=True)
 
-# Configuração de weights de colunas para dar espaço proporcional
-mainframe.columnconfigure(0, weight=1) # Lado Esquerdo/Meio (Operação)
-mainframe.columnconfigure(1, weight=1) # Lado Direito (Cadastro)
+mainframe.columnconfigure(0, weight=1) 
+mainframe.columnconfigure(1, weight=1) 
 
 frame_esquerda = ttk.Frame(mainframe)
 frame_esquerda.grid(row=0, column=0, sticky="nsew", padx=10)
@@ -234,19 +278,19 @@ combo_componentes.pack(fill="x", pady=5)
 frame_acao = ttk.Labelframe(frame_esquerda, text="Ação", padding="10")
 frame_acao.pack(fill="x", pady=5)
 
-texto_acao = ttk.Label(frame_acao, text="Enviar endereço de handshake para o Arduino:")
+texto_acao = ttk.Label(frame_acao, text="Testar todos os pares associados ao componente:")
 texto_acao.pack(anchor="w")
 
-botao_acao = ttk.Button(frame_acao, text="Enviar Teste", command=envia_teste, state="disabled")
+botao_acao = ttk.Button(frame_acao, text="Enviar Teste Completo", command=envia_teste, state="disabled")
 botao_acao.pack(fill="x", pady=5)
 
 
-# 4. Resultados
+# 4. Resultados (Aumentado para acomodar várias linhas de resposta)
 frame_resultado = ttk.Labelframe(frame_esquerda, text="Status do Teste", padding="10")
-frame_resultado.pack(fill="x", pady=5)
+frame_resultado.pack(fill="both", expand=True, pady=5)
 
-texto_resultado = ttk.Label(frame_resultado, text="Aguardando teste...", font=("Helvetica", 10, "italic"))
-texto_resultado.pack(pady=5)
+texto_resultado = ttk.Label(frame_resultado, text="Aguardando teste...", font=("Helvetica", 10, "italic"), justify=LEFT)
+texto_resultado.pack(anchor="w", pady=5)
 
 frame_direita = ttk.Frame(mainframe)
 frame_direita.grid(row=0, column=1, sticky="nsew", padx=10)
@@ -259,16 +303,18 @@ ttk.Label(frame_cadastro, text="Nome do Componente:").pack(anchor="w", pady=(0,2
 entry_nome = ttk.Entry(frame_cadastro)
 entry_nome.pack(fill="x", pady=(0,10))
 
-# Campo Handshake
-ttk.Label(frame_cadastro, text="Byte de Handshake (ex: 0x37):").pack(anchor="w", pady=(0,2))
-entry_handshake = ttk.Entry(frame_cadastro)
-entry_handshake.pack(fill="x", pady=(0,10))
+# Campo de Texto para múltiplos Pares
+ttk.Label(frame_cadastro, text="Pares Envio = Sucessos (um por linha):").pack(anchor="w", pady=(0,2))
+text_comandos = Text(frame_cadastro, height=8, font=("Helvetica", 10))
+text_comandos.pack(fill="x", pady=(0,2))
 
-# Campo Sucessos
-ttk.Label(frame_cadastro, text="Bytes de Sucesso (separados por vírgula):").pack(anchor="w", pady=(0,2))
-entry_sucessos = ttk.Entry(frame_cadastro)
-entry_sucessos.pack(fill="x", pady=(0,2))
-ttk.Label(frame_cadastro, text="Exemplo para RC522: 0x91,0x92", font=("Helvetica", 8, "italic"), foreground="gray").pack(anchor="w", pady=(0,15))
+# Exemplo explicativo no cadastro
+exemplo_txt = (
+    "Exemplo:\n"
+    "0x37 = 0x91,0x92\n"
+    "0x38 = 0x95"
+)
+ttk.Label(frame_cadastro, text=exemplo_txt,justify=LEFT).pack(anchor="w", pady=(0,15))
 
 # Botão Salvar
 botao_cadastrar = ttk.Button(frame_cadastro, text="Salvar no Banco (JSON)", command=cadastrar_novo_componente)
@@ -276,7 +322,6 @@ botao_cadastrar.pack(fill="x", ipady=5)
 
 
 # Inicialização
-inicializar_json()
 carregar_componentes()
 atualizar_portas()
 
