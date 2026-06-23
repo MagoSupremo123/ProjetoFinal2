@@ -4,42 +4,58 @@ import serial
 import serial.tools.list_ports
 import time
 import os
-import csv
+import json
 
 # Nome do arquivo de banco de dados
-CSV_FILE = "componentes.csv"
+JSON_FILE = "componentes.json"
 arduino = None
 componentes_carregados = {}  # Dicionário para guardar os dados dos componentes
 
-def inicializar_csv():
-    """Cria o arquivo CSV com os cabeçalhos se ele não existir."""
-    if not os.path.exists(CSV_FILE):
-        with open(CSV_FILE, mode='w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(["Nome", "Handshake", "Sucessos"])
+def inicializar_json():
+    """Cria o arquivo JSON com uma estrutura vazia se ele não existir."""
+    if not os.path.exists(JSON_FILE):
+        with open(JSON_FILE, mode='w', encoding='utf-8') as f:
+            json.dump({}, f, indent=4)
         # Inserir o RC522 como padrão inicial para facilitar
-        salvar_componente_csv("RC522", "0x37", "0x91,0x92")
+        salvar_componente_json("RC522", "0x37", "0x91,0x92")
 
-def salvar_componente_csv(nome, handshake, sucessos):
-    with open(CSV_FILE, mode='a', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow([nome, handshake, sucessos])
+def salvar_componente_json(nome, handshake, sucessos):
+    """Carrega o JSON atual, adiciona o novo componente e salva de volta."""
+    dados = {}
+    if os.path.exists(JSON_FILE):
+        try:
+            with open(JSON_FILE, mode='r', encoding='utf-8') as f:
+                dados = json.load(f)
+        except json.JSONDecodeError:
+            dados = {}
+            
+    # Adiciona ou atualiza o componente no dicionário
+    dados[nome] = {
+        "Handshake": handshake,
+        "Sucessos": sucessos
+    }
+    
+    with open(JSON_FILE, mode='w', encoding='utf-8') as f:
+        json.dump(dados, f, indent=4, ensure_ascii=False)
 
 def carregar_componentes():
-    """Lê o CSV e atualiza o dicionário global e o Combobox."""
+    """Lê o JSON e atualiza o dicionário global e o Combobox."""
     global componentes_carregados
     componentes_carregados.clear()
     
-    if not os.path.exists(CSV_FILE):
-        inicializar_csv()
+    if not os.path.exists(JSON_FILE):
+        inicializar_json()
         
-    with open(CSV_FILE, mode='r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for linha in reader:
-            componentes_carregados[linha["Nome"]] = {
-                "handshake": linha["Handshake"],
-                "sucessos": [s.strip() for s in linha["Sucessos"].split(",")]
-            }
+    try:
+        with open(JSON_FILE, mode='r', encoding='utf-8') as f:
+            dados = json.load(f)
+            for nome, info in dados.items():
+                componentes_carregados[nome] = {
+                    "handshake": info["Handshake"],
+                    "sucessos": [s.strip() for s in info["Sucessos"].split(",")]
+                }
+    except Exception as e:
+        messagebox.showerror("Erro", f"Erro ao ler o arquivo JSON: {e}")
             
     # Atualiza o combobox de seleção
     nomes = list(componentes_carregados.keys())
@@ -69,7 +85,7 @@ def cadastrar_novo_componente():
         messagebox.showerror("Erro", "Os endereços de Handshake e Sucesso devem ser inteiros ou hexadecimais (ex: 0x37)!")
         return
 
-    salvar_componente_csv(nome, handshake, sucessos)
+    salvar_componente_json(nome, handshake, sucessos)
     carregar_componentes() # Recarrega a lista
     
     # Limpa os campos de texto
@@ -121,7 +137,7 @@ def envia_teste():
         messagebox.showerror("Erro", "Nenhum componente selecionado!")
         return
         
-    # Obtém as especificações do componente vindas do CSV
+    # Obtém as especificações do componente vindas do JSON
     dados_comp = componentes_carregados[comp_selecionado]
     valor_digitado = dados_comp["handshake"]
     
@@ -173,7 +189,7 @@ raiz.geometry("800x500")
 mainframe = ttk.Frame(raiz, padding="20")
 mainframe.pack(fill=BOTH, expand=True)
 
-# Configuração de pesos de colunas para dar espaço proporcional
+# Configuração de weights de colunas para dar espaço proporcional
 mainframe.columnconfigure(0, weight=1) # Lado Esquerdo/Meio (Operação)
 mainframe.columnconfigure(1, weight=1) # Lado Direito (Cadastro)
 
@@ -203,7 +219,7 @@ texto_status = ttk.Label(frame_conexao, text="Não conectado", foreground="gray"
 texto_status.pack(pady=5)
 
 
-# 2. Seleção de Componente (Antigo Frame Configuração)
+# 2. Seleção de Componente
 frame_config = ttk.Labelframe(frame_esquerda, text="Componente Alvo", padding="10")
 frame_config.pack(fill="x", pady=5)
 
@@ -255,12 +271,12 @@ entry_sucessos.pack(fill="x", pady=(0,2))
 ttk.Label(frame_cadastro, text="Exemplo para RC522: 0x91,0x92", font=("Helvetica", 8, "italic"), foreground="gray").pack(anchor="w", pady=(0,15))
 
 # Botão Salvar
-botao_cadastrar = ttk.Button(frame_cadastro, text="Salvar no Banco (CSV)", command=cadastrar_novo_componente)
+botao_cadastrar = ttk.Button(frame_cadastro, text="Salvar no Banco (JSON)", command=cadastrar_novo_componente)
 botao_cadastrar.pack(fill="x", ipady=5)
 
 
 # Inicialização
-inicializar_csv()
+inicializar_json()
 carregar_componentes()
 atualizar_portas()
 
