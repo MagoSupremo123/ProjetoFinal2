@@ -96,14 +96,23 @@ def cadastrar_novo_componente():
         handshake = handshake.strip()
         sucessos = sucessos.strip()
         
+        # Validação estrita do formato hexadecimal (deve começar com 0x ou 0X)
+        if not handshake.lower().startswith('0x'):
+            messagebox.showerror("Erro", f"O endereço de envio '{handshake}' deve estar no formato hexadecimal (ex: 0x37)!")
+            return
+            
         try:
-            # Validação do formato do byte de envio
-            int(handshake, 16) if '0x' in handshake else int(handshake)
+            int(handshake, 16)
+            
             # Validação dos bytes de sucesso
             for s in sucessos.split(','):
-                int(s.strip(), 16) if '0x' in s.strip() else int(s.strip())
+                s_limpo = s.strip()
+                if not s_limpo.lower().startswith('0x'):
+                    messagebox.showerror("Erro", f"O endereço de sucesso '{s_limpo}' deve estar no formato hexadecimal (ex: 0x91)!")
+                    return
+                int(s_limpo, 16)
         except ValueError:
-            messagebox.showerror("Erro", f"Os endereços em '{linha}' devem ser inteiros ou hexadecimais (ex: 0x37)!")
+            messagebox.showerror("Erro", f"Os endereços em '{linha}' devem ser valores hexadecimais válidos!")
             return
             
         lista_comandos_validados.append({
@@ -130,7 +139,7 @@ def atualizar_portas():
     combo_portas['values'] = lista_portas
     if lista_portas:
         combo_portas.current(0)
-        texto_status.config(text="Portas atualizadas.")
+        texto_status.config(text="Portas updated.")
     else:
         combo_portas.set('')
         texto_status.config(text="Nenhuma porta encontrada!")
@@ -181,7 +190,10 @@ def envia_teste():
         valor_digitado = par["handshake"]
         
         try:
-            byte_com_conversao = int(valor_digitado, 16) if '0x' in valor_digitado else int(valor_digitado)
+            if not valor_digitado.lower().startswith('0x'):
+                raise ValueError
+                
+            byte_com_conversao = int(valor_digitado, 16)
             
             # Limpa o buffer antes de enviar
             arduino.reset_input_buffer()
@@ -196,7 +208,9 @@ def envia_teste():
                 # Converte a lista de sucessos salvas em inteiros
                 lista_sucessos_int = []
                 for s in par["sucessos"]:
-                    num = int(s, 16) if '0x' in s else int(s)
+                    if not s.lower().startswith('0x'):
+                        raise ValueError
+                    num = int(s, 16)
                     lista_sucessos_int.append(num)
                     
                 if valor_retornado in [0x00, 0xFF]:
@@ -223,7 +237,7 @@ def envia_teste():
         messagebox.showwarning("Resultado", f"Houve falhas nos testes do componente '{comp_selecionado}'.")
 
 def envia_teste_manual():
-    """Envia um byte arbitrário digitado na hora, sem validação pelo JSON."""
+    """Envia um byte arbitrário digitado na hora, validando estritamente como hexadecimal."""
     if not arduino or not arduino.is_open:
         messagebox.showerror("Erro", "O arduino não está conectado")
         return
@@ -233,15 +247,19 @@ def envia_teste_manual():
         messagebox.showwarning("Aviso", "Digite um byte para enviar!")
         return
 
+    # Garante que começa com 0x ou 0X
+    if not byte_texto.lower().startswith('0x'):
+        messagebox.showerror("Erro", "Digite um valor hexadecimal válido (ex: 0x37)!")
+        return
+
     try:
-        # Tenta converter para inteiro (aceita decimal ou 0xHex)
-        byte_a_enviar = int(byte_texto, 16) if '0x' in byte_texto.lower() else int(byte_texto)
+        byte_a_enviar = int(byte_texto, 16)
         
         if byte_a_enviar < 0 or byte_a_enviar > 255:
             raise ValueError("Fora do limite")
             
     except ValueError:
-        messagebox.showerror("Erro", "Digite um valor de byte válido entre 0 e 255 (ou em Hex: 0x00 a 0xFF)!")
+        messagebox.showerror("Erro", "O valor deve ser um hexadecimal válido entre 0x00 e 0xFF!")
         return
 
     try:
@@ -256,7 +274,7 @@ def envia_teste_manual():
         resposta_bruta = arduino.read(1)
         if resposta_bruta:
             valor_retornado = resposta_bruta[0]
-            msg = f"[Manual] Enviado: {byte_texto}\n[Manual] Resposta do Arduino: {valor_retornado} (0x{valor_retornado:02X})"
+            msg = f"[Manual] Enviado: {byte_texto}\n[Manual] Resposta do Arduino: 0x{valor_retornado:02X}"
             texto_resultado.config(text=msg)
         else:
             texto_resultado.config(text=f"[Manual] Enviado: {byte_texto}\n[Manual] Erro: Sem resposta (Timeout).")
@@ -318,11 +336,11 @@ botao_acao = ttk.Button(frame_config, text="Enviar Teste Completo (JSON)", comma
 botao_acao.pack(fill="x", pady=5)
 
 
-# 3. NOVO: Teste de Bytes Manual (Direto)
+# 3. Teste de Bytes Manual (Direto)
 frame_manual = ttk.Labelframe(frame_esquerda, text="Modo Manual - Teste Direto de Byte", padding="10")
 frame_manual.pack(fill="x", pady=5)
 
-ttk.Label(frame_manual, text="Digite o byte de envio (Ex: 145 ou 0x37):").pack(anchor="w")
+ttk.Label(frame_manual, text="Digite o byte de envio (Ex: 0x37):").pack(anchor="w")
 
 frame_sub_manual = ttk.Frame(frame_manual)
 frame_sub_manual.pack(fill="x", pady=5)
