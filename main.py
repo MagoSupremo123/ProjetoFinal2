@@ -296,9 +296,12 @@ raiz.geometry("900x600")
 mainframe = ttk.Frame(raiz, padding="20")
 mainframe.pack(fill=BOTH, expand=True)
 
-mainframe.columnconfigure(0, weight=1) 
-mainframe.columnconfigure(1, weight=1) 
+# Adicionado o 'uniform' para garantir tamanho idêntico em ambas as colunas
+mainframe.columnconfigure(0, weight=1, uniform="grupo1") 
+mainframe.columnconfigure(1, weight=1, uniform="grupo1") 
+mainframe.rowconfigure(0, weight=1) # Garante expansão vertical
 
+# --- LADO ESQUERDO ---
 frame_esquerda = ttk.Frame(mainframe)
 frame_esquerda.grid(row=0, column=0, sticky="nsew", padx=10)
 
@@ -352,12 +355,13 @@ botao_manual = ttk.Button(frame_sub_manual, text="Enviar Direto", command=envia_
 botao_manual.pack(side=RIGHT)
 
 
-# 4. Resultados
+# 4. Resultados (fill="both" e expand=True para ocupar o resto do espaço à esquerda)
 frame_resultado = ttk.Labelframe(frame_esquerda, text="Status do Teste", padding="10")
 frame_resultado.pack(fill="both", expand=True, pady=5)
 
 texto_resultado = ttk.Label(frame_resultado, text="Aguardando ação...", font=("Helvetica", 10, "italic"), justify=LEFT)
 texto_resultado.pack(anchor="w", pady=5)
+
 
 # --- LADO DIREITO ---
 frame_direita = ttk.Frame(mainframe)
@@ -371,22 +375,21 @@ ttk.Label(frame_cadastro, text="Nome do Componente:").pack(anchor="w", pady=(0,2
 entry_nome = ttk.Entry(frame_cadastro)
 entry_nome.pack(fill="x", pady=(0,10))
 
-# Campo de Texto para múltiplos Pares
+# Campo de Texto para múltiplos Pares (Modificado fill="both" e expand=True para se ajustar harmonicamente)
 ttk.Label(frame_cadastro, text="Pares Envio = Sucessos (um por linha):").pack(anchor="w", pady=(0,2))
 text_comandos = Text(frame_cadastro, height=8, font=("Helvetica", 10))
-text_comandos.pack(fill="x", pady=(0,2))
+text_comandos.pack(fill="both", expand=True, pady=(0,2))
 
 exemplo_txt = (
     "Exemplo:\n"
     "0x10 = 0x91,0x92\n"
     "0x12 = 0x67"
 )
-ttk.Label(frame_cadastro, text=exemplo_txt, font=("Helvetica", 8, "italic"), foreground="gray", justify=LEFT).pack(anchor="w", pady=(0,15))
+ttk.Label(frame_cadastro, text=exemplo_txt, font=("Helvetica", 8, "italic"), foreground="gray", justify=LEFT).pack(anchor="w", pady=(5,15))
 
 # Botão Salvar
 botao_cadastrar = ttk.Button(frame_cadastro, text="Salvar no Banco (JSON)", command=cadastrar_novo_componente)
 botao_cadastrar.pack(fill="x", ipady=5)
-
 
 # Inicialização
 carregar_componentes()
